@@ -219,3 +219,7 @@ __marimo__/
 
 # claude
 .claude/settings.json
+.claude/settings.local.json
+
+# database
+data/gold.db

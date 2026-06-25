@@ -2,7 +2,7 @@
 Streamlit dashboard for gold price signals.
 
 Usage:
-    streamlit run src/streamlit_app.py
+    PYTHONPATH=. streamlit run src/streamlit_app.py
 """
 
 import time
@@ -12,8 +12,8 @@ import altair as alt
 import streamlit as st
 import pandas as pd
 
-from .analyst.engine import SignalEngine
-from .analyst.indicators import sma, rsi, bollinger_bands
+from src.analyst.engine import SignalEngine
+from src.analyst.indicators import sma, rsi, bollinger_bands
 
 DB_PATH = Path("data/gold.db")
 
@@ -201,7 +201,7 @@ def main() -> None:
     with col1:
         chart = _build_price_chart(df)
         if chart is not None:
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("Not enough data for price chart.")
 
@@ -247,14 +247,14 @@ def main() -> None:
     with col3:
         rsi_chart = _build_rsi_chart(df)
         if rsi_chart is not None:
-            st.altair_chart(rsi_chart, use_container_width=True)
+            st.altair_chart(rsi_chart, width='stretch')
         else:
             st.info("Not enough data for RSI.")
 
     with col4:
         macd_chart = _build_macd_chart(snapshot)
         if macd_chart is not None:
-            st.altair_chart(macd_chart, use_container_width=True)
+            st.altair_chart(macd_chart, width='stretch')
         else:
             st.info("Not enough data for MACD.")
 
@@ -262,7 +262,7 @@ def main() -> None:
     st.subheader("Signal History")
     signal_log = engine.get_signal_log()
     if signal_log:
-        st.dataframe(pd.DataFrame(signal_log), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(signal_log), width='stretch', hide_index=True)
     else:
         st.info("No signals triggered yet.")
 

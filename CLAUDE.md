@@ -27,7 +27,7 @@ uv run python -m src.collector
 uv run python -m src.cli_signal
 
 # 3. Web dashboard (run alongside collector)
-uv run streamlit run src/streamlit_app.py
+PYTHONPATH=. uv run streamlit run src/streamlit_app.py
 ```
 
 Dependencies are managed via `uv` and `pyproject.toml`. No test/lint/build tooling configured yet.

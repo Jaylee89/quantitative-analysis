@@ -6,6 +6,7 @@ from typing import Optional
 
 from .indicators import sma, ema, rsi, bollinger_bands, macd
 from .signals import evaluate_signals, aggregate_signals, SignalResult
+from .. import db
 
 _TZ_UTC8 = timedelta(hours=8)
 
@@ -104,16 +105,25 @@ class SignalEngine:
     def __init__(
         self,
         db_path: str | Path,
+        signals_db_path: str | Path | None = None,
         lookback_minutes: int = 120,
     ):
         self._db_path = Path(db_path)
         self._lookback_minutes = lookback_minutes
         self._last_id = 0
         self._bars: list[dict] = []
+        self._last_consensus: str | None = None
 
         # For incremental stats
         self._last_snapshot: dict | None = None
         self._signal_log: list[dict] = []
+
+        # Init signals DB if a path was provided
+        if signals_db_path is not None:
+            db.init_signals_db(Path(signals_db_path))
+            self._signals_db_path = Path(signals_db_path)
+        else:
+            self._signals_db_path = None
 
     def refresh(self) -> dict:
         """Full refresh: reload all available data and recompute."""
@@ -274,6 +284,47 @@ class SignalEngine:
             "last_updated": datetime.now(timezone_utc8()).isoformat(timespec="seconds"),
             "bar_count": len(bars),
         }
+
+        # Persist to signals DB when consensus changes or a new non-HOLD signal appears
+        if self._signals_db_path is not None:
+            now_iso = datetime.now(timezone_utc8()).isoformat(timespec="seconds")
+            bar_time = bars[-1]["dt"].isoformat() if bars else None
+            new_consensus = consensus["consensus"]
+
+            if new_consensus != self._last_consensus:
+                db.insert_signal(
+                    recorded_at=now_iso,
+                    action=new_consensus,
+                    strength=consensus["avg_strength"],
+                    reason=f"Consensus changed from {self._last_consensus or 'N/A'} to {new_consensus}",
+                    indicator="CONSENSUS",
+                    price=latest_price,
+                    bar_time=bar_time,
+                )
+                self._last_consensus = new_consensus
+
+            # Also persist individual non-HOLD signals that are new
+            for sr in signal_results:
+                if sr.action != "HOLD":
+                    log_key = f"{sr.indicator_name}|{sr.action}"
+                    should_persist = (
+                        not hasattr(self, "_persisted_signals")
+                        or log_key not in self._persisted_signals
+                    )
+                    if should_persist:
+                        db.insert_signal(
+                            recorded_at=now_iso,
+                            action=sr.action,
+                            strength=round(sr.strength, 2),
+                            reason=sr.reason,
+                            indicator=sr.indicator_name,
+                            price=latest_price,
+                            bar_time=bar_time,
+                        )
+                        if not hasattr(self, "_persisted_signals"):
+                            self._persisted_signals: set[str] = set()
+                        self._persisted_signals.add(log_key)
+
         self._last_snapshot = snapshot
         return snapshot
 

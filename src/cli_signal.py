@@ -130,16 +130,18 @@ def build_layout(snapshot: dict) -> Layout:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Gold Price Signal Monitor")
     parser.add_argument("--db", default="data/gold.db", help="Path to SQLite database")
+    parser.add_argument("--signals-db", default="data/signals.db", help="Path to signals SQLite database")
     parser.add_argument("--interval", type=float, default=2.0, help="Poll interval (seconds)")
     args = parser.parse_args()
 
     db_path = Path(args.db)
+    signals_db_path = Path(args.signals_db)
     if not db_path.exists():
         print(f"Database not found: {db_path}")
         print("Start the collector first with: python -m src.collector")
         return
 
-    engine = SignalEngine(db_path)
+    engine = SignalEngine(db_path, signals_db_path=signals_db_path)
     console = Console()
 
     try:

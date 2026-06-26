@@ -222,4 +222,4 @@ __marimo__/
 .claude/settings.local.json
 
 # database
-data/gold.db
+data/gold.*

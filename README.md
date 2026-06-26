@@ -18,7 +18,7 @@ uv run python -m src.collector
 #    终端模式：
 uv run python -m src.cli_signal
 #    Web 仪表板模式：
-uv run streamlit run src/streamlit_app.py
+PYTHONPATH=. uv run streamlit run src/streamlit_app.py
 ```
 
 按 `Ctrl+C` 优雅停止。

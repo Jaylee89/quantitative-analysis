@@ -16,6 +16,7 @@ from src.analyst.engine import SignalEngine
 from src.analyst.indicators import sma, rsi, bollinger_bands
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "gold.db"
+SIGNALS_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "signals.db"
 
 
 @st.cache_resource
@@ -23,7 +24,7 @@ def _get_engine() -> SignalEngine:
     if not DB_PATH.exists():
         st.error(f"Database not found: {DB_PATH}. Start the collector first.")
         st.stop()
-    return SignalEngine(DB_PATH)
+    return SignalEngine(DB_PATH, signals_db_path=SIGNALS_DB_PATH)
 
 
 def _enrich_bars(bars: list[dict]) -> pd.DataFrame:

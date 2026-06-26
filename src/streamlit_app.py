@@ -15,7 +15,7 @@ import pandas as pd
 from src.analyst.engine import SignalEngine
 from src.analyst.indicators import sma, rsi, bollinger_bands
 
-DB_PATH = Path("data/gold.db")
+DB_PATH = Path(__file__).resolve().parent.parent / "data" / "gold.db"
 
 
 @st.cache_resource
@@ -55,34 +55,32 @@ def _build_price_chart(df: pd.DataFrame) -> alt.Chart | None:
     if df.empty:
         return None
 
-    df["t"] = df["dt"].dt.strftime("%H:%M")
-
     line_price = (
         alt.Chart(df)
         .mark_line(color="#2196F3", strokeWidth=2)
         .encode(
-            x=alt.X("t:T", title="Time"),
+            x=alt.X("dt:T", title="Time", axis=alt.Axis(format="%H:%M")),
             y=alt.Y("close:Q", title="Price", scale=alt.Scale(zero=False)),
-            tooltip=["t", alt.Tooltip("close:Q", format=".2f")],
+            tooltip=[alt.Tooltip("dt:T", format="%H:%M"), alt.Tooltip("close:Q", format=".2f")],
         )
     )
 
     line_sma5 = (
         alt.Chart(df)
         .mark_line(color="#FF9800", strokeWidth=1, opacity=0.8)
-        .encode(x="t:T", y=alt.Y("sma5:Q", title="Price"))
+        .encode(x="dt:T", y=alt.Y("sma5:Q", title="Price"))
     )
 
     line_sma20 = (
         alt.Chart(df)
         .mark_line(color="#9C27B0", strokeWidth=1, opacity=0.8)
-        .encode(x="t:T", y=alt.Y("sma20:Q"))
+        .encode(x="dt:T", y=alt.Y("sma20:Q"))
     )
 
     bb_area = (
         alt.Chart(df)
         .mark_area(opacity=0.08, color="#4CAF50")
-        .encode(x="t:T", y="bb_upper:Q", y2="bb_lower:Q")
+        .encode(x="dt:T", y="bb_upper:Q", y2="bb_lower:Q")
     )
 
     chart = (
@@ -100,12 +98,10 @@ def _build_rsi_chart(df: pd.DataFrame) -> alt.Chart | None:
     if df.empty:
         return None
 
-    df["t"] = df["dt"].dt.strftime("%H:%M")
-
     line = (
         alt.Chart(df)
         .mark_line(color="#E91E63", strokeWidth=2)
-        .encode(x="t:T", y=alt.Y("rsi:Q", scale=alt.Scale(domain=[0, 100])))
+        .encode(x="dt:T", y=alt.Y("rsi:Q", scale=alt.Scale(domain=[0, 100])))
     )
 
     overbought = (

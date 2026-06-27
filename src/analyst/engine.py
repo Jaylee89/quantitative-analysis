@@ -125,6 +125,9 @@ class SignalEngine:
         else:
             self._signals_db_path = None
 
+    def set_lookback(self, minutes: int) -> None:
+        self._lookback_minutes = minutes
+
     def refresh(self) -> dict:
         """Full refresh: reload all available data and recompute."""
         conn = get_connection(self._db_path)

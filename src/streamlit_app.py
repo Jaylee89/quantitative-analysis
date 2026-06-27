@@ -79,8 +79,11 @@ def _build_price_chart(df: pd.DataFrame) -> alt.Chart | None:
         .mark_line(color="#2196F3", strokeWidth=2)
         .encode(
             x=alt.X("dt:T", title="Time", axis=alt.Axis(format="%H:%M")),
-            y=alt.Y("close:Q", title="Price", scale=alt.Scale(zero=False)),
-            tooltip=[alt.Tooltip("dt:T", format="%H:%M"), alt.Tooltip("close:Q", format=".2f")],
+            y=alt.Y("close:Q", title="Price", scale=alt.Scale(zero=False), axis=alt.Axis(format=".2f")),
+            tooltip=[
+                alt.Tooltip("dt:T", format="%H:%M"),
+                alt.Tooltip("close:Q", format=".2f"),
+            ],
         )
     )
 
@@ -99,7 +102,15 @@ def _build_price_chart(df: pd.DataFrame) -> alt.Chart | None:
     bb_area = (
         alt.Chart(df)
         .mark_area(opacity=0.08, color="#4CAF50")
-        .encode(x="dt:T", y="bb_upper:Q", y2="bb_lower:Q")
+        .encode(
+            x="dt:T",
+            y="bb_upper:Q",
+            y2="bb_lower:Q",
+            tooltip=[
+                alt.Tooltip("bb_upper:Q", format=".2f"),
+                alt.Tooltip("bb_lower:Q", format=".2f"),
+            ],
+        )
     )
 
     chart = (
@@ -107,6 +118,7 @@ def _build_price_chart(df: pd.DataFrame) -> alt.Chart | None:
         .properties(height=380, title="Gold Price — SMA(5/20) + Bollinger Bands")
         .interactive()
     )
+    chart = chart.configure_axis(format=".2f")
     return chart
 
 
@@ -171,7 +183,7 @@ def _build_macd_chart(snapshot: dict) -> alt.Chart | None:
                 alt.value("#4CAF50"),
                 alt.value("#F44336"),
             ),
-            tooltip=alt.Tooltip("value:Q", format=".4f"),
+            tooltip=alt.Tooltip("value:Q", format=".2f"),
         )
     )
 
@@ -185,7 +197,7 @@ def _build_macd_chart(snapshot: dict) -> alt.Chart | None:
                 domain=["MACD", "Signal"],
                 range=["#2196F3", "#FF9800"],
             )),
-            tooltip=alt.Tooltip("value:Q", format=".4f"),
+            tooltip=alt.Tooltip("value:Q", format=".2f"),
         )
     )
 
@@ -193,10 +205,25 @@ def _build_macd_chart(snapshot: dict) -> alt.Chart | None:
     return chart
 
 
+TIME_OPTIONS = {
+    "2 hours": 120,
+    "1 day": 1440,
+    "5 days": 7200,
+    "1 month": 43200,
+}
+
+
 def _render_signal_dashboard(engine: SignalEngine) -> None:
-    snapshot = engine.tick()
-    if snapshot is None:
-        snapshot = engine.refresh()
+    selected = st.radio(
+        "Time Range",
+        options=list(TIME_OPTIONS.keys()),
+        index=1,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    engine.set_lookback(TIME_OPTIONS[selected])
+    snapshot = engine.refresh()
 
     if snapshot.get("bar_count", 0) == 0:
         st.warning("No data available yet.")
@@ -225,7 +252,7 @@ def _render_signal_dashboard(engine: SignalEngine) -> None:
         last_updated = snapshot.get("last_updated", "")
 
         if latest is not None:
-            st.metric("Current Price", f"{latest:.4f}")
+            st.metric("Current Price", f"{latest:.2f}")
 
         cmap = {"BUY": "green", "SELL": "red", "HOLD": "gray"}
         st.markdown(
@@ -251,7 +278,7 @@ def _render_signal_dashboard(engine: SignalEngine) -> None:
         for key in ["sma_5", "sma_20", "rsi_14", "bb_upper", "bb_lower", "macd", "macd_signal", "macd_histogram"]:
             val = ind.get(key)
             if val is not None:
-                st.markdown(f"**{key}:** {val:.4f}")
+                st.markdown(f"**{key}:** {val:.2f}")
 
     col3, col4 = st.columns(2)
     with col3:

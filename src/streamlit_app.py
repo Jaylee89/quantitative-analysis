@@ -1,5 +1,5 @@
 """
-Streamlit dashboard for gold price signals.
+Streamlit dashboard for gold price signals + portfolio management.
 
 Usage:
     PYTHONPATH=. streamlit run src/streamlit_app.py
@@ -14,9 +14,27 @@ import pandas as pd
 
 from src.analyst.engine import SignalEngine
 from src.analyst.indicators import sma, rsi, bollinger_bands
+from src.portfolio import (
+    init_db as init_portfolio_db,
+    get_portfolio,
+    save_portfolio,
+    add_buy_record,
+    get_buy_records,
+    delete_buy_record,
+    calc_portfolio_snapshot,
+    calc_buy_suggestion,
+    calc_sell_suggestion,
+    get_latest_price,
+)
+from src.portfolio.engine import set_gold_db_path
 
 DB_PATH = Path(__file__).resolve().parent.parent / "data" / "gold.db"
 SIGNALS_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "signals.db"
+PORTFOLIO_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "portfolio.db"
+
+# Init portfolio DB
+init_portfolio_db(PORTFOLIO_DB_PATH)
+set_gold_db_path(DB_PATH)
 
 
 @st.cache_resource
@@ -175,12 +193,7 @@ def _build_macd_chart(snapshot: dict) -> alt.Chart | None:
     return chart
 
 
-def main() -> None:
-    st.set_page_config(page_title="Gold Signal Dashboard", layout="wide")
-    st.title("Gold Quantitative Signal Dashboard")
-
-    engine = _get_engine()
-
+def _render_signal_dashboard(engine: SignalEngine) -> None:
     snapshot = engine.tick()
     if snapshot is None:
         snapshot = engine.refresh()
@@ -198,7 +211,7 @@ def main() -> None:
     with col1:
         chart = _build_price_chart(df)
         if chart is not None:
-            st.altair_chart(chart, width='stretch')
+            st.altair_chart(chart, use_container_width=True)
         else:
             st.info("Not enough data for price chart.")
 
@@ -244,14 +257,14 @@ def main() -> None:
     with col3:
         rsi_chart = _build_rsi_chart(df)
         if rsi_chart is not None:
-            st.altair_chart(rsi_chart, width='stretch')
+            st.altair_chart(rsi_chart, use_container_width=True)
         else:
             st.info("Not enough data for RSI.")
 
     with col4:
         macd_chart = _build_macd_chart(snapshot)
         if macd_chart is not None:
-            st.altair_chart(macd_chart, width='stretch')
+            st.altair_chart(macd_chart, use_container_width=True)
         else:
             st.info("Not enough data for MACD.")
 
@@ -259,9 +272,162 @@ def main() -> None:
     st.subheader("Signal History")
     signal_log = engine.get_signal_log()
     if signal_log:
-        st.dataframe(pd.DataFrame(signal_log), width='stretch', hide_index=True)
+        st.dataframe(pd.DataFrame(signal_log), use_container_width=True, hide_index=True)
     else:
         st.info("No signals triggered yet.")
+
+
+def _render_portfolio_page() -> None:
+    st.subheader("Portfolio Management")
+
+    current_price = get_latest_price()
+    portfolio = get_portfolio()
+
+    # Display current price info
+    if current_price is not None:
+        st.metric("Current Gold Price", f"{current_price:.2f} /g")
+    else:
+        st.info("No price data available. Start the collector first.")
+
+    st.divider()
+
+    # ── Portfolio Overview ──
+    if portfolio is not None and current_price is not None:
+        snap = calc_portfolio_snapshot(portfolio, current_price)
+
+        col1, col2, col3, col4, col5 = st.columns(5)
+        col1.metric("Total Grams", f"{portfolio.total_grams:.4f} g")
+        col2.metric("Avg Cost /g", f"{portfolio.avg_cost_per_gram:.2f}")
+        col3.metric("Total Cost", f"{portfolio.total_cost:.2f}")
+        delta_color = "inverse" if snap["pnl"] < 0 else "normal"
+        col4.metric("Current Value", f"{snap['current_value']:.2f}")
+        col5.metric("PnL", f"{snap['pnl']:.2f} ({snap['pnl_percent']:+.2f}%)", delta_color=delta_color)
+
+        # ── Suggestion Section ──
+        st.divider()
+        st.subheader("Suggestion")
+
+        buy_suggestion = calc_buy_suggestion(portfolio, current_price)
+        sell_suggestion = calc_sell_suggestion(portfolio, current_price)
+
+        if buy_suggestion is not None:
+            st.info(
+                f"Current price ({current_price:.2f}) is below your average cost "
+                f"({portfolio.avg_cost_per_gram:.2f}). "
+                f"建议买入 **{buy_suggestion['grams_needed']:.2f} 克** "
+                f"（约 **{buy_suggestion['amount_needed']:.2f} 元**），"
+                f"均价可降至 **{buy_suggestion['target_avg_price']:.2f} 元/克**。"
+            )
+        elif sell_suggestion is not None:
+            st.success(
+                f"Current price ({current_price:.2f}) is above your average cost "
+                f"({portfolio.avg_cost_per_gram:.2f}). "
+                f"全部卖出可盈利 **{sell_suggestion['profit']:.2f} 元** "
+                f"（+{sell_suggestion['profit_percent']:.2f}%），"
+                f"总价值 **{sell_suggestion['total_value']:.2f} 元**。"
+            )
+        else:
+            st.info("当前价格接近成本均价，建议观望等待明确信号。")
+
+    elif portfolio is None:
+        st.info("No portfolio data yet. Set up your holdings below.")
+
+    st.divider()
+
+    # ── Set / Edit Portfolio ──
+    st.subheader("Set / Edit Portfolio")
+
+    default_grams = portfolio.total_grams if portfolio else 0.0
+    default_cost = portfolio.total_cost if portfolio else 0.0
+
+    with st.form("portfolio_form", clear_on_submit=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            grams = st.number_input(
+                "Total Grams (g)", min_value=0.0, value=default_grams, step=0.01, format="%.4f"
+            )
+        with col2:
+            cost = st.number_input(
+                "Total Cost (¥)", min_value=0.0, value=default_cost, step=0.01, format="%.2f"
+            )
+
+        if st.form_submit_button("Save Portfolio", type="primary"):
+            if grams > 0 and cost > 0:
+                save_portfolio(grams, cost)
+                st.success("Portfolio saved!")
+                st.rerun()
+            else:
+                st.error("Grams and cost must be greater than 0.")
+
+    st.divider()
+
+    # ── Record Buy ──
+    st.subheader("Record New Buy")
+
+    with st.form("buy_form", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            buy_grams = st.number_input(
+                "Buy Grams (g)", min_value=0.0, step=0.01, format="%.4f"
+            )
+        with col2:
+            buy_price = st.number_input(
+                "Price per Gram (¥)", min_value=0.0, step=0.01, format="%.2f"
+            )
+
+        if st.form_submit_button("Record Buy", type="primary"):
+            if buy_grams > 0 and buy_price > 0:
+                new_portfolio = add_buy_record(buy_grams, buy_price)
+                st.success(
+                    f"Buy recorded! New avg cost: {new_portfolio.avg_cost_per_gram:.2f} /g. "
+                    f"Total: {new_portfolio.total_grams:.4f} g"
+                )
+                st.rerun()
+            else:
+                st.error("Grams and price must be greater than 0.")
+
+    st.divider()
+
+    # ── Buy History ──
+    st.subheader("Buy History")
+
+    records = get_buy_records(limit=50)
+    if records:
+        df_history = pd.DataFrame(records)
+        df_history_display = df_history[["id", "grams", "price_per_gram", "total_amount", "bought_at"]].copy()
+        df_history_display.columns = ["ID", "Grams", "Price/g", "Total", "Time"]
+        st.dataframe(df_history_display, use_container_width=True, hide_index=True)
+
+        # Delete a record
+        record_ids = [r.id for r in records]
+        selected_id = st.selectbox("Delete a buy record (will rollback portfolio)", record_ids)
+        if st.button("Delete Selected Record", type="secondary"):
+            updated = delete_buy_record(selected_id)
+            if updated is not None:
+                st.success(
+                    f"Record deleted. Portfolio updated: {updated.total_grams:.4f}g, "
+                    f"avg cost {updated.avg_cost_per_gram:.2f}/g"
+                )
+            else:
+                st.success("Record deleted and portfolio cleared (no remaining holdings).")
+            st.rerun()
+    else:
+        st.info("No buy records yet.")
+
+
+def main() -> None:
+    st.set_page_config(page_title="Gold Signal Dashboard", layout="wide")
+    st.title("Gold Quantitative Signal Dashboard")
+
+    engine = _get_engine()
+
+    tab1, tab2 = st.tabs(["Signal Dashboard", "Portfolio"])
+
+    with tab1:
+        _render_signal_dashboard(engine)
+
+    with tab2:
+        _render_portfolio_page()
 
     time.sleep(2)
     st.rerun()

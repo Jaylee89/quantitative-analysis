@@ -18,6 +18,16 @@ from rich.table import Table
 from rich.text import Text
 
 from .analyst.engine import SignalEngine
+from .portfolio import (
+    init_db as init_portfolio_db,
+    get_portfolio,
+    calc_portfolio_snapshot,
+    calc_buy_suggestion,
+    calc_sell_suggestion,
+)
+from .portfolio.engine import set_gold_db_path
+
+PORTFOLIO_DB_PATH = Path(__file__).resolve().parent.parent / "data" / "portfolio.db"
 
 
 def build_table(snapshot: dict) -> Table:
@@ -72,17 +82,8 @@ def build_table(snapshot: dict) -> Table:
     return table
 
 
-def _get_arr(indicators: dict, key: str, idx: int, bars: list) -> float | None:
-    """Try to get indicator value at bar idx; fallback to latest available."""
-    val = indicators.get(key)
-    if val is None:
-        return None
-    return val
-
-
 def _bar_signal(idx: int, signals: list[dict], bars: list) -> str:
     """Return signal indicator for a specific bar index."""
-    # Simplified: just return based on the overall signal for the latest bar
     if idx != len(bars) - 1:
         return "·"
     buy_count = sum(1 for s in signals if s["action"] == "BUY")
@@ -100,6 +101,7 @@ def build_footer(snapshot: dict) -> Table:
     buy_n = snapshot.get("buy_signals", 0)
     sell_n = snapshot.get("sell_signals", 0)
     signals = snapshot.get("signals", [])
+    latest_price = snapshot.get("latest_price")
 
     style_map = {"BUY": "green", "SELL": "red", "HOLD": "yellow"}
     consensus_text = Text(
@@ -112,8 +114,42 @@ def build_footer(snapshot: dict) -> Table:
     t.add_row(Text(f"BUY signals: {buy_n}  SELL signals: {sell_n}", style="dim"))
     for s in signals:
         if s["action"] != "HOLD":
-            action_colored = Text(f"  {s['action']}", style=style_map.get(s["action"], "white"))
             t.add_row(Text(f"  {s['reason']} ({s['strength']:.2f})", style="dim"))
+
+    # Portfolio summary
+    t.add_row(Text(""))
+    portfolio = get_portfolio()
+    if portfolio is not None and latest_price is not None:
+        snap = calc_portfolio_snapshot(portfolio, latest_price)
+        pnl_style = "green" if snap["pnl"] >= 0 else "red"
+        t.add_row(Text(
+            f"Portfolio: {portfolio.total_grams:.2f}g  |  "
+            f"Avg Cost: {portfolio.avg_cost_per_gram:.2f}  |  "
+            f"Current: {latest_price:.2f}",
+            style="bold",
+        ))
+        t.add_row(Text(
+            f"Value: {snap['current_value']:.2f}  |  "
+            f"PnL: {snap['pnl']:+.2f} ({snap['pnl_percent']:+.2f}%)",
+            style=pnl_style,
+        ))
+
+        buy_suggestion = calc_buy_suggestion(portfolio, latest_price)
+        if buy_suggestion is not None:
+            t.add_row(Text(
+                f"建议买入 {buy_suggestion['grams_needed']:.2f}g"
+                f" (~{buy_suggestion['amount_needed']:.2f}¥)"
+                f" 降至 {buy_suggestion['target_avg_price']:.2f}/g",
+                style="cyan",
+            ))
+        else:
+            sell_suggestion = calc_sell_suggestion(portfolio, latest_price)
+            if sell_suggestion is not None:
+                t.add_row(Text(
+                    f"全部卖出可盈利 {sell_suggestion['profit']:+.2f}¥"
+                    f" (+{sell_suggestion['profit_percent']:.2f}%)",
+                    style="green",
+                ))
 
     return t
 
@@ -122,7 +158,7 @@ def build_layout(snapshot: dict) -> Layout:
     layout = Layout()
     layout.split_column(
         Layout(build_table(snapshot), name="main"),
-        Layout(build_footer(snapshot), name="footer", size=10),
+        Layout(build_footer(snapshot), name="footer", size=12),
     )
     return layout
 
@@ -140,6 +176,10 @@ def main() -> None:
         print(f"Database not found: {db_path}")
         print("Start the collector first with: python -m src.collector")
         return
+
+    # Init portfolio
+    init_portfolio_db(PORTFOLIO_DB_PATH)
+    set_gold_db_path(db_path)
 
     engine = SignalEngine(db_path, signals_db_path=signals_db_path)
     console = Console()

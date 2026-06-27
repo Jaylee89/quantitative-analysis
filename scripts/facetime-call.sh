@@ -11,7 +11,7 @@ tell application "FaceTime"
     activate
     open location "facetime://${CONTACT}"
 end tell
-delay 5
+delay 3
 tell application "System Events"
     tell process "FaceTime"
         set frontmost to true

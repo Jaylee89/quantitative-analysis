@@ -1,10 +1,10 @@
 #!/bin/bash
-# FaceTime video call shortcut — calls 121769651@qq.com
+# FaceTime video call shortcut — calls jaylee1217@gmail.com
 # Usage: ./scripts/facetime-call.sh
 
 set -euo pipefail
 
-CONTACT="121769651@qq.com"
+CONTACT="jaylee1217@gmail.com"
 
 osascript <<EOF
 tell application "FaceTime"

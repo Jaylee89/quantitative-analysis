@@ -211,7 +211,7 @@ def _render_signal_dashboard(engine: SignalEngine) -> None:
     with col1:
         chart = _build_price_chart(df)
         if chart is not None:
-            st.altair_chart(chart, use_container_width=True)
+            st.altair_chart(chart, width='stretch')
         else:
             st.info("Not enough data for price chart.")
 
@@ -257,14 +257,14 @@ def _render_signal_dashboard(engine: SignalEngine) -> None:
     with col3:
         rsi_chart = _build_rsi_chart(df)
         if rsi_chart is not None:
-            st.altair_chart(rsi_chart, use_container_width=True)
+            st.altair_chart(rsi_chart, width='stretch')
         else:
             st.info("Not enough data for RSI.")
 
     with col4:
         macd_chart = _build_macd_chart(snapshot)
         if macd_chart is not None:
-            st.altair_chart(macd_chart, use_container_width=True)
+            st.altair_chart(macd_chart, width='stretch')
         else:
             st.info("Not enough data for MACD.")
 
@@ -272,7 +272,7 @@ def _render_signal_dashboard(engine: SignalEngine) -> None:
     st.subheader("Signal History")
     signal_log = engine.get_signal_log()
     if signal_log:
-        st.dataframe(pd.DataFrame(signal_log), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(signal_log), width='stretch', hide_index=True)
     else:
         st.info("No signals triggered yet.")
 
@@ -396,7 +396,7 @@ def _render_portfolio_page() -> None:
         df_history = pd.DataFrame(records)
         df_history_display = df_history[["id", "grams", "price_per_gram", "total_amount", "bought_at"]].copy()
         df_history_display.columns = ["ID", "Grams", "Price/g", "Total", "Time"]
-        st.dataframe(df_history_display, use_container_width=True, hide_index=True)
+        st.dataframe(df_history_display, width='stretch', hide_index=True)
 
         # Delete a record
         record_ids = [r.id for r in records]

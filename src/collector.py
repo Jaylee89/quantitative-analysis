@@ -23,6 +23,11 @@ def _now_utc8() -> datetime:
     return datetime.now(_tz_utc8)
 
 
+def _is_market_closed(when: datetime) -> bool:
+    """Saturday after 02:00 UTC+8 or all day Sunday -> skip fetch."""
+    return (when.weekday() == 5 and when.hour >= 2) or when.weekday() == 6
+
+
 _shutdown_event = asyncio.Event()
 
 
@@ -44,6 +49,8 @@ async def fetch_price(client: httpx.AsyncClient) -> str:
 
 async def poll_once(client: httpx.AsyncClient) -> None:
     now = _now_utc8()
+    if _is_market_closed(now):
+        return
     now_iso = now.isoformat(timespec="seconds")
     raw = await fetch_price(client)
     parsed = parser.parse_response(raw)
